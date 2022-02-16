@@ -2,14 +2,12 @@
 #define __FILE_UTILS_H__
 
 #include <string>
-
-namespace glt {
+#include "opencv2/opencv.hpp"
 
 class FileUtils {
 public:
   static std::string readFile(const std::string &fileName);
+  static cv::Mat readImage(const std::string &fileName, const cv::ImreadModes mode);
 };
-
-} // namespace glt
 
 #endif // __FILE_UTILS_H__

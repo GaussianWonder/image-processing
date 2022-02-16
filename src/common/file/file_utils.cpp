@@ -1,11 +1,10 @@
+#include "opencv2/opencv.hpp"
 #include "file_utils.h"
 #include "logger.h"
 
 #include <string>
 #include <fstream>
 #include <sstream>
-
-namespace glt {
 
 std::string FileUtils::readFile(const std::string &fileName)
 {
@@ -22,4 +21,7 @@ std::string FileUtils::readFile(const std::string &fileName)
   }
 }
 
-} // namespace glt
+cv::Mat FileUtils::readImage(const std::string &fileName, const cv::ImreadModes mode)
+{
+  return imread(fileName, mode);
+}

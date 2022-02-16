@@ -4,6 +4,15 @@
 
 This is a cross platform ImageProcessing template. It should work on any device with conan and cmake installed.
 
+**It features:**
+
+1. `.cpp` and `.h` files are automatically included into the main executable
+2. Automatic `target_include_directories` via the `HEADER_DIRECTORIES` CMAKE macro
+3. Mini script runner to enchance the build process.
+4. Lightweight macro wrappers over `spdlog` (for debugging)
+
+> Currently, windows requires manual adjustments for OpenCV's `find_package`.
+
 ## Build
 
 Generally, the order is

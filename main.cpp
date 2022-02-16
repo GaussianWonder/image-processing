@@ -1,29 +1,67 @@
-#include <iostream>
 #include "opencv2/opencv.hpp"
+#include "common.h"
+#include "slider.h"
 
-#include "logger.h"
-#include "paths.h"
+void bi_level_color_map(const cv::Mat &src, cv::Mat &dst)
+{ // black and white
+  for(int i = 0; i < src.rows; ++i)
+    for(int j = 0; j < src.cols; ++j)
+      dst.at<uchar>(i,j) = src.at<uchar>(i,j) > 127 ? 255 : 0;
+  imshow("input image", src);
+  imshow("output image", dst);
+}
 
-using namespace cv;
+void negative(const cv::Mat &src, cv::Mat &dst)
+{
+  for(int i = 0; i < src.rows; ++i)
+    for(int j = 0; j < src.cols; ++j)
+      dst.at<uchar>(i,j) = 255 - src.at<uchar>(i,j);
+  imshow("input image", src);
+  imshow("output image", dst);
+}
 
 int main() {
   Logger::init();
 
-  WARN("Opening file {}", PathConcat(ImageFolder, "/saturn.bmp"));
+  DEBUG("Opening file {}", IMAGE("saturn.bmp"));
+  cv::Mat img = FileUtils::readImage(IMAGE("saturn.bmp"), cv::IMREAD_GRAYSCALE);
+  cv::Mat outImg(img.rows, img.cols, CV_8UC1);
+  DEBUG("image loaded with {} {}", img.rows, img.cols);
 
-  Mat img = imread(PathConcat(ImageFolder, "/saturn.bmp"), IMREAD_GRAYSCALE);
-  Mat outImg(img.rows, img.cols, CV_8UC1);
-  INFO("image loaded with {} {}", img.rows, img.cols);
-  for(int i = 0; i < img.rows; i++)
-  {
-    for(int j = 0; j < img.cols; j++)
-    {
-      outImg.at<uchar>(i,j) = 255 - img.at<uchar>(i,j);
+  INFO("Press the arrow keys to cycle through execution slides");
+
+  Slider slider(
+    { [&](){ bi_level_color_map(img, outImg); }
+    , [&](){ negative(img, outImg); }
     }
-  }
-  imshow("input image", img);
-  imshow("output image", outImg);
-  waitKey(0);
+  );
+
+  std::string exportName = "";
+  KEY operation = KEY::NONE;
+  do {
+    slider.exec();
+
+    switch (operation)
+    {
+    case KEY::LEFT_ARROW:
+      slider.previous();
+      DEBUG("Previous");
+      break;
+    case KEY::RIGHT_ARROW:
+      slider.next();
+      DEBUG("Next");
+      break;
+    case KEY::ENTER:
+      exportName = nextImageName();
+      cv::imwrite(exportName, outImg);
+      DEBUG("Export {}", exportName);
+      break;
+    default:
+      break;
+    }
+
+    operation = WaitKey(30);
+  } while (operation != KEY::ESC);
 
   Logger::destroy();
   return 0;

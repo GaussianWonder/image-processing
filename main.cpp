@@ -2,6 +2,8 @@
 #include "common.h"
 #include "slider.h"
 
+// Processing functions
+
 void bi_level_color_map(const cv::Mat &src, cv::Mat &dst)
 { // black and white
   for(int i = 0; i < src.rows; ++i)
@@ -30,17 +32,21 @@ int main() {
 
   INFO("Press the arrow keys to cycle through execution slides");
 
+  // Processing functions that the user can slide through
   Slider slider(
     { [&](){ bi_level_color_map(img, outImg); }
     , [&](){ negative(img, outImg); }
     }
   );
 
+  // Loop
   std::string exportName = "";
   KEY operation = KEY::NONE;
   do {
+    // Execute the current processing function
     slider.exec();
 
+    // Input handling
     switch (operation)
     {
     case KEY::LEFT_ARROW:
@@ -60,6 +66,7 @@ int main() {
       break;
     }
 
+    // Handle keypresses
     operation = WaitKey(30);
   } while (operation != KEY::ESC);
 

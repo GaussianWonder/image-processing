@@ -1,4 +1,5 @@
 #include "slider.h"
+#include "logger.h"
 
 using Executor = std::function<void()>;
 using Executors = std::vector<Executor>;
@@ -12,11 +13,13 @@ Slider::Slider(Executors executors)
 void Slider::next()
 {
   currentIndex = currentIndex == size - 1 ? 0 : currentIndex + 1;
+  DEBUG("Next");
 }
 
 void Slider::previous()
 {
   currentIndex = currentIndex == 0 ? size - 1 : currentIndex - 1;
+  DEBUG("Previous");
 }
 
 void Slider::exec()

@@ -13,6 +13,15 @@ This is a cross platform ImageProcessing template. It should work on any device 
 
 > Currently, windows requires manual adjustments for OpenCV's `find_package`.
 
+### Notes
+
+The following folder structure is mandatory
+
+```text
+assets \
+  exports
+```
+
 ## Build
 
 Generally, the order is

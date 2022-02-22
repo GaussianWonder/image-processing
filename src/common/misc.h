@@ -34,7 +34,4 @@ KEY resolvedKey(const int key);
 // Wait for key press and return a consistent key across platforms
 #define WaitKey(D) (cv::waitKey(D) & 0xEFFFFF)
 
-
-std::string nextImageName();
-
 #endif

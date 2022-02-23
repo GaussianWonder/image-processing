@@ -8,5 +8,6 @@
 
 #include <string>
 #include <cstddef>
+#include <vector>
 
 #endif

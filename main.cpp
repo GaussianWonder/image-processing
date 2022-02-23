@@ -65,14 +65,36 @@ void four_squares(cv::Mat &dst)
   imshow("output image", dst);
 }
 
+void split_channels(const cv::Mat &src)
+{
+  cv::Mat red(src.rows, src.cols, CV_8UC3);
+  cv::Mat green(src.rows, src.cols, CV_8UC3);
+  cv::Mat blue(src.rows, src.cols, CV_8UC3);
+
+  for (int i = 0; i < src.rows; ++i)
+    for (int j = 0; j < src.cols; ++j) {
+      auto val = src.at<cv::Vec3b>(i,j);
+      red.at<cv::Vec3b>(i,j) = cv::Vec3b(0, 0, val[2]);
+      green.at<cv::Vec3b>(i,j) = cv::Vec3b(0, val[1], 0);
+      blue.at<cv::Vec3b>(i,j) = cv::Vec3b(val[0], 0, 0);
+    }
+
+  imshow("input image", src);
+  imshow("red", red);
+  imshow("green", green);
+  imshow("blue", blue);
+}
+
 int main() {
   Logger::init();
 
   DEBUG("Opening file {}", IMAGE("saturn.bmp"));
   cv::Mat img = FileUtils::readImage(IMAGE("saturn.bmp"), cv::IMREAD_GRAYSCALE);
+  DEBUG("image loaded with {} {}", img.rows, img.cols);
   cv::Mat outImg(img.rows, img.cols, CV_8UC1);
   cv::Mat genRGB(img.rows, img.cols, CV_8UC3);
-  DEBUG("image loaded with {} {}", img.rows, img.cols);
+
+  cv::Mat flowers = FileUtils::readImage(IMAGE("flowers_24bits.bmp"), cv::IMREAD_COLOR);
 
   INFO("Press the arrow keys to cycle through execution slides");
 
@@ -83,6 +105,7 @@ int main() {
     , [&](){ additive(img, outImg); }
     , [&](){ multiplicative(img, outImg); }
     , [&](){ four_squares(genRGB); }
+    , [&](){ split_channels(flowers); }
     }
   );
 
@@ -104,6 +127,9 @@ int main() {
       break;
     case KEY::ENTER:
       FileUtils::quickSave(outImg);
+      break;
+    case KEY::SPACE:
+      cv::destroyAllWindows();
       break;
     default:
       break;

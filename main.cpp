@@ -4,11 +4,11 @@
 
 // Processing functions
 
-void bi_level_color_map(const cv::Mat &src, cv::Mat &dst)
+void bi_level_color_map(const cv::Mat &src, cv::Mat &dst, const uchar threshold = 127)
 { // black and white
   for(int i = 0; i < src.rows; ++i)
     for(int j = 0; j < src.cols; ++j)
-      dst.at<uchar>(i,j) = src.at<uchar>(i,j) > 127 ? 255 : 0;
+      dst.at<uchar>(i,j) = src.at<uchar>(i,j) > threshold ? 255 : 0;
   imshow("input image", src);
   imshow("output image", dst);
 }
@@ -85,6 +85,18 @@ void split_channels(const cv::Mat &src)
   imshow("blue", blue);
 }
 
+void color_to_grayscale(const cv::Mat &src)
+{
+  cv::Mat dst(src.rows, src.cols, CV_8UC1);
+  for (int i = 0; i < src.rows; ++i)
+    for (int j = 0; j < src.cols; ++j) {
+      auto val = src.at<cv::Vec3b>(i,j);
+      dst.at<uchar>(i,j) = (uchar) (val[0] + val[1] + val[2]) / 3;
+    }
+  imshow("input image", src);
+  imshow("output image", dst);
+}
+
 int main() {
   Logger::init();
 
@@ -101,11 +113,12 @@ int main() {
   // Processing functions that the user can slide through
   Slider slider(
     { [&](){ bi_level_color_map(img, outImg); }
-    , [&](){ negative(img, outImg); }
-    , [&](){ additive(img, outImg); }
-    , [&](){ multiplicative(img, outImg); }
-    , [&](){ four_squares(genRGB); }
+    // , [&](){ negative(img, outImg); }
+    // , [&](){ additive(img, outImg); }
+    // , [&](){ multiplicative(img, outImg); }
+    // , [&](){ four_squares(genRGB); }
     , [&](){ split_channels(flowers); }
+    , [&](){ color_to_grayscale(flowers); }
     }
   );
 

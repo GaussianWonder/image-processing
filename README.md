@@ -1,8 +1,26 @@
 # Image Processing Template
 
+- [Image Processing Template](#image-processing-template)
+  - [Specs](#specs)
+    - [Notes](#notes)
+  - [Setup the requirements on your system](#setup-the-requirements-on-your-system)
+    - [Arch Linux](#arch-linux)
+    - [Unknown Linux](#unknown-linux)
+    - [MacOS](#macos)
+    - [Windows](#windows)
+  - [Build](#build)
+    - [Help menu](#help-menu)
+    - [Get up and running](#get-up-and-running)
+    - [Fast rebuild and run](#fast-rebuild-and-run)
+    - [Build without the helper script](#build-without-the-helper-script)
+  - [Recommendations](#recommendations)
+    - [VSCode](#vscode)
+    - [CLion](#clion)
+    - [VisualStudio](#visualstudio)
+
 ## Specs
 
-This is a cross platform ImageProcessing template. It should work on any device with conan and cmake installed.
+This is a template project for IP. It contains a handful of utilities and it should be considered as a playground for image processing. It should work on any device with **conan** and **cmake** installed.
 
 **It features:**
 
@@ -21,6 +39,70 @@ The following folder structure is mandatory
 assets \
   exports
 ```
+
+The following packages are mandatory:
+
+```text
+gcc make cmake python conan opencv
+```
+
+<div class="page" />
+
+## Setup the requirements on your system
+
+### Arch Linux
+
+```bash
+sudo pacman -S base-devel cmake opencv
+```
+
+There is a [Conan AUR package](https://aur.archlinux.org/packages/conan)
+
+```bash
+yay -S conan
+```
+
+### Unknown Linux
+
+Search for base devel packages, usually every distro has one.
+
+**Debian based example:**
+
+```bash
+apt-get install build-essential
+```
+
+Check the conan [installation options](https://conan.io/downloads.html). You can go for the python package installation via pip.
+
+```bash
+pip install conan
+```
+
+### MacOS
+
+Homebrew instructions are available [here](https://brew.sh/).
+
+```bash
+brew install opencv
+```
+
+```bash
+brew update && brew upgrade && brew cleanup
+```
+
+```bash
+brew install pkg-config
+```
+
+Taken from the [conan download options](https://conan.io/downloads.html) available:
+
+```bash
+brew install conan
+```
+
+### Windows
+
+Manual setup is required. After the installation of CMake and Conana, you must download the OpenCV library and point `find_package(OpenCV REQUIRED)` to the correct location or **manually overwrite** `${OpenCV_LIBS}` such that `target_link_libraries(${PROJECT_NAME} PUBLIC ${OpenCV_LIBS})` works
 
 ## Build
 
@@ -105,6 +187,8 @@ conan build ..
 
 ## Recommendations
 
+### VSCode
+
 If using VSCode, I recommend the following settings for **command-runner**.
 
 ```json
@@ -123,3 +207,15 @@ If using VSCode, I recommend the following settings for **command-runner**.
 ```
 
 Now useful commands are accesible via the `CTRL + SHIFT + R` shortcut.
+
+If you want to extend the build process with packages that are not on the conan repository, you can fill in the `source` method of the `ImageProcessingTemplate` class inside [the conan.py file](./conanfile.py).
+
+More details about extending the codebase using source can be read [here](https://docs.conan.io/en/1.44/reference/conanfile/methods.html).
+
+### CLion
+
+I recommend using the VSCode setup, it provides enough functionality and intelisence. However, if you are going for CLion, try to explicitly disable the automatic append of new files in the `add_executable()` statement of the `CMakeLists.txt` file. It is redundant since it already scans for all the **.cpp** and **.h** and includes them in the executable. This can cause errors such as `function x redefined here` or `undefined refference to x`.
+
+### VisualStudio
+
+> Bruh...

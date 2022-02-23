@@ -2,6 +2,8 @@
 #include "common.h"
 #include "slider.h"
 
+#include "spaces.h"
+
 // Processing functions
 
 void bi_level_color_map(const cv::Mat &src, cv::Mat &dst, const uchar threshold = 127)
@@ -10,7 +12,7 @@ void bi_level_color_map(const cv::Mat &src, cv::Mat &dst, const uchar threshold 
     for(int j = 0; j < src.cols; ++j)
       dst.at<uchar>(i,j) = src.at<uchar>(i,j) > threshold ? 255 : 0;
   imshow("input image", src);
-  imshow("output image", dst);
+  imshow("black&white", dst);
 }
 
 void negative(const cv::Mat &src, cv::Mat &dst)
@@ -19,7 +21,7 @@ void negative(const cv::Mat &src, cv::Mat &dst)
     for(int j = 0; j < src.cols; ++j)
       dst.at<uchar>(i,j) = 255 - src.at<uchar>(i,j);
   imshow("input image", src);
-  imshow("output image", dst);
+  imshow("negative", dst);
 }
 
 void additive(const cv::Mat &src, cv::Mat &dst)
@@ -30,7 +32,7 @@ void additive(const cv::Mat &src, cv::Mat &dst)
       dst.at<uchar>(i,j) = val <= 155 ? val + 100 : 255;
     }
   imshow("input image", src);
-  imshow("output image", dst);
+  imshow("additive grayscale", dst);
 }
 
 void multiplicative(const cv::Mat &src, cv::Mat &dst)
@@ -41,7 +43,7 @@ void multiplicative(const cv::Mat &src, cv::Mat &dst)
       dst.at<uchar>(i,j) = val <= 255.0f ? (uchar) val : 255;
     }
   imshow("input image", src);
-  imshow("output image", dst);
+  imshow("multiplicative grayscale", dst);
 }
 
 void four_squares(cv::Mat &dst)
@@ -62,7 +64,7 @@ void four_squares(cv::Mat &dst)
   };
   for (int i = 0; i < 4; ++i)
     cv::rectangle(dst, rectangles[i], scalars[i], -1);
-  imshow("output image", dst);
+  imshow("generated cv::Mat", dst);
 }
 
 void split_channels(const cv::Mat &src)
@@ -85,6 +87,28 @@ void split_channels(const cv::Mat &src)
   imshow("blue", blue);
 }
 
+void split_hsv(const cv::Mat &src)
+{
+  cv::Mat hue(src.rows, src.cols, CV_8UC1);
+  cv::Mat saturation(src.rows, src.cols, CV_8UC1);
+  cv::Mat value(src.rows, src.cols, CV_8UC1);
+
+  for (int i = 0; i < src.rows; ++i)
+    for (int j = 0; j < src.cols; ++j) {
+      auto val = src.at<cv::Vec3b>(i,j);
+      HSV hsv(val[2], val[1], val[0]);
+
+      hue.at<uchar>(i,j) = hsv.h * 0.7f;
+      saturation.at<uchar>(i,j) = hsv.s * 2.55f;
+      value.at<uchar>(i,j) = hsv.v * 2.55f;
+    }
+
+  imshow("input image", src);
+  imshow("hue", hue);
+  imshow("saturation", saturation);
+  imshow("value", value);
+}
+
 void color_to_grayscale(const cv::Mat &src)
 {
   cv::Mat dst(src.rows, src.cols, CV_8UC1);
@@ -94,7 +118,7 @@ void color_to_grayscale(const cv::Mat &src)
       dst.at<uchar>(i,j) = (uchar) (val[0] + val[1] + val[2]) / 3;
     }
   imshow("input image", src);
-  imshow("output image", dst);
+  imshow("grayscale", dst);
 }
 
 int main() {
@@ -111,14 +135,16 @@ int main() {
   INFO("Press the arrow keys to cycle through execution slides");
 
   // Processing functions that the user can slide through
+  uchar thresh = 127;
   Slider slider(
-    { [&](){ bi_level_color_map(img, outImg); }
-    // , [&](){ negative(img, outImg); }
-    // , [&](){ additive(img, outImg); }
-    // , [&](){ multiplicative(img, outImg); }
-    // , [&](){ four_squares(genRGB); }
+    { [&](){ bi_level_color_map(img, outImg, thresh); }
+    , [&](){ negative(img, outImg); }
+    , [&](){ additive(img, outImg); }
+    , [&](){ multiplicative(img, outImg); }
+    , [&](){ four_squares(genRGB); }
     , [&](){ split_channels(flowers); }
     , [&](){ color_to_grayscale(flowers); }
+    , [&](){ split_hsv(flowers); }
     }
   );
 
@@ -133,9 +159,11 @@ int main() {
     switch (operation)
     {
     case KEY::LEFT_ARROW:
+      cv::destroyAllWindows();
       slider.previous();
       break;
     case KEY::RIGHT_ARROW:
+      cv::destroyAllWindows();
       slider.next();
       break;
     case KEY::ENTER:
@@ -143,6 +171,12 @@ int main() {
       break;
     case KEY::SPACE:
       cv::destroyAllWindows();
+      break;
+    case KEY::UP_ARROW:
+      thresh += 10;
+      break;
+    case KEY::DOWN_ARROW:
+      thresh -= 10;
       break;
     default:
       break;

@@ -28,4 +28,6 @@ public:
   HSV(RGB rgb);
 };
 
+RGB hsv_to_rgb(float H, float S, float V);
+
 #endif

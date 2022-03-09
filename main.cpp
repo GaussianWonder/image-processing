@@ -1,6 +1,7 @@
 #include "opencv2/opencv.hpp"
 #include "common.h"
 #include "slider.h"
+#include <cmath>
 
 #include "spaces.h"
 
@@ -121,6 +122,171 @@ void color_to_grayscale(const cv::Mat &src)
   imshow("grayscale", dst);
 }
 
+void compute_historgram(const cv::Mat &src)
+{
+  int histSize = 361;
+  float range[] = { 0, 256 }; //the upper boundary is exclusive
+  const float* histRange[] = { range };
+
+  std::vector<cv::Mat> hsvHists = {
+    cv::Mat(src.rows, src.cols, CV_8UC1),
+    cv::Mat(src.rows, src.cols, CV_8UC1),
+    cv::Mat(src.rows, src.cols, CV_8UC1)
+  };
+
+  for (int i = 0; i < src.rows; ++i)
+    for (int j = 0; j < src.cols; ++j) {
+      auto val = src.at<cv::Vec3b>(i,j);
+      HSV hsv(val[2], val[1], val[0]);
+
+      hsvHists[0].at<uchar>(i,j) = hsv.h * 0.7f;
+      hsvHists[1].at<uchar>(i,j) = hsv.s * 2.55f;
+      hsvHists[2].at<uchar>(i,j) = hsv.v * 2.55f;
+    }
+
+  cv::Mat hueHist;
+  cv::calcHist(hsvHists.data(), 1, 0, cv::Mat(), hueHist, 1, &histSize, histRange, true, false);
+
+  int hist_w = 360, hist_h = 400;
+  int bin_w = cvRound((double) hist_w / histSize);
+
+  cv::Mat histImage(hist_h, hist_w, CV_8UC3, cv::Scalar(0,0,0));
+
+  cv::normalize(hueHist, hueHist, 0, histImage.rows, cv::NORM_MINMAX, -1, cv::Mat());
+
+  for(int i=0; i<=histSize; ++i)
+  {
+    RGB rgb = hsv_to_rgb((float) i, 100.0f, 100.0f);
+    auto color = cv::Scalar(rgb.b, rgb.g, rgb.r);
+    auto currentPoint = cv::Point(
+      bin_w * (i),
+      hist_h - cvRound(hueHist.at<float>(i))
+    );
+    auto toBottom = cv::Point(
+      bin_w * (i),
+      hist_h
+    );
+    cv::line(
+      histImage,
+      currentPoint,
+      toBottom,
+      color,
+      2, 8, 0
+    );
+  }
+
+  imshow("Source", src);
+  imshow("Hue Histogram", histImage);
+
+  std::vector<float> maxLocals = {};
+
+  const int WH = 5;
+  const int windowSize = 2*WH+1;
+  const float TH = 0.0003;
+  for (int mid = WH + 1; mid<=histSize - WH - 1; ++mid) {
+    const float midVal = hueHist.at<float>(mid);
+    int sum = 0;
+    bool applicable = true;
+
+    const int start = mid - WH;
+    const int stop = mid + WH;
+    for (int i=start; i<stop; ++i) {
+      float currentVal = hueHist.at<float>(i);
+      sum += currentVal;
+
+      if (currentVal > midVal) {
+        applicable = false;
+        break;
+      }
+    }
+
+    float avg = (float) sum / (float) windowSize;
+    if (applicable && midVal > avg + TH) {
+      maxLocals.push_back(midVal);
+    }
+  }
+
+  // cv::Mat maxLocalsHist(hist_h, hist_w, CV_8UC3, cv::Scalar(0,0,0));
+  // for (auto maxLocal: maxLocals) {
+  //   RGB rgb = hsv_to_rgb((float) maxLocal, 100.0f, 100.0f);
+  //   auto color = cv::Scalar(rgb.b, rgb.g, rgb.r);
+  //   auto currentPoint = cv::Point(
+  //     bin_w * (maxLocal),
+  //     hist_h - cvRound(hueHist.at<float>(maxLocal))
+  //   );
+  //   auto toBottom = cv::Point(
+  //     bin_w * (maxLocal),
+  //     hist_h
+  //   );
+  //   cv::line(
+  //     maxLocalsHist,
+  //     currentPoint,
+  //     toBottom,
+  //     color,
+  //     2, 8, 0
+  //   );
+  // }
+  // imshow("Max local histogram", maxLocalsHist);
+
+  const float errorDistribution[3][3] = {
+    {0, 0, 0},
+    {0, 1, 7/16},
+    {3/16, 5/16, 1/16}
+  };
+
+  float errorAccumulation[(int) src.rows][(int) src.cols] = { 0 };
+  cv::Mat reducedColor(src.rows, src.cols, CV_8UC3);
+  const int maxLocalSz = maxLocals.size();
+  for (int i = 0; i < src.rows; ++i)
+    for (int j = 0; j < src.cols; ++j) {
+      auto val = src.at<cv::Vec3b>(i,j);
+      HSV hsv(val[2], val[1], val[0]);
+      const uchar grayHue = hsv.h * 0.7f;
+
+      float minDiff = 500.0f;
+      float maxLocalMinDiff = 0.0f;
+      for (float maxLocal : maxLocals) {
+        float diff = std::abs(grayHue - maxLocal);
+        if (minDiff > diff) {
+          minDiff = diff;
+          maxLocalMinDiff = maxLocal;
+        }
+      }
+
+      float maxLocalHue = maxLocalMinDiff * 1.41f;
+      RGB newColor = hsv_to_rgb(maxLocalHue, hsv.s, hsv.v);
+
+      reducedColor.at<cv::Vec3b>(i, j) = cv::Vec3b(newColor.B(), newColor.G(), newColor.R());
+
+      float error = hsv.h - maxLocalHue;
+      for (int ii; ii<3; ++ii) {
+        for (int jj; jj<3; ++jj) {
+          int errorI = i + ii;
+          int errorJ = j + jj;
+          if (errorI > 0 && errorI < src.rows && errorJ > 0 && errorJ < src.cols) {
+            errorAccumulation[errorI][errorJ] += error * errorDistribution[ii][jj];
+          }
+        }
+      }
+    }
+
+  cv::Mat ditheredColor(src.rows, src.cols, CV_8UC3);
+  for (int i = 0; i < src.rows; ++i)
+    for (int j = 0; j < src.cols; ++j) {
+      auto val = reducedColor.at<cv::Vec3b>(i,j);
+      HSV hsv(val[2], val[1], val[0]);
+      auto error = errorAccumulation[i][j];
+      auto newHue = float(hsv.h + error);
+      if (newHue > 360.0f)
+        newHue -= 360.0f;
+      auto replaceWith = hsv_to_rgb(newHue, hsv.s, hsv.v);
+      reducedColor.at<cv::Vec3b>(i,j) = cv::Vec3b(replaceWith.B(), replaceWith.G(), replaceWith.R());
+    }
+
+  imshow("Thresholded", reducedColor);
+  imshow("Dithered", ditheredColor);
+}
+
 int main() {
   Logger::init();
 
@@ -131,6 +297,7 @@ int main() {
   cv::Mat genRGB(img.rows, img.cols, CV_8UC3);
 
   cv::Mat flowers = FileUtils::readImage(IMAGE("flowers_24bits.bmp"), cv::IMREAD_COLOR);
+  cv::Mat hueSpectrum = FileUtils::readImage(IMAGE("huespectrum.png"), cv::IMREAD_COLOR);
 
   INFO("Press the arrow keys to cycle through execution slides");
 
@@ -145,6 +312,7 @@ int main() {
     , [&](){ split_channels(flowers); }
     , [&](){ color_to_grayscale(flowers); }
     , [&](){ split_hsv(flowers); }
+    , [&](){ compute_historgram(flowers); }
     }
   );
 

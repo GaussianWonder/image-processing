@@ -2,6 +2,7 @@
 #include "common.h"
 #include "slider.h"
 #include <cmath>
+#include <fstream>
 
 #include "spaces.h"
 
@@ -403,6 +404,100 @@ void geometricalFeatures(const cv::Mat &src)
   imshow("GeomFeature", src);
 }
 
+cv::Point firstBlackPixel(const cv::Mat &src) {
+  for(int i=0; i<src.rows; ++i) {
+    for (int j=0; j<src.cols; ++j) {
+      if (src.at<uchar>(i, j) < 127) {
+        return cv::Point(j, i);
+      }
+    }
+  }
+  return cv::Point(-1, -1);
+}
+
+void traceBorder(const cv::Mat &src)
+{
+  cv::Mat dst(src.rows, src.cols, CV_8UC3);
+  for(int i = 0; i < src.rows; ++i)
+    for(int j = 0; j < src.cols; ++j)
+      dst.at<cv::Vec3b>(i,j) = src.at<uchar>(i,j) > 127 ? cv::Vec3b(255, 255, 255) : cv::Vec3b(0, 0, 0);
+
+  const cv::Point directions[8] = {
+    cv::Point(0, 1),
+    cv::Point(-1, 1),
+    cv::Point(-1, 0),
+    cv::Point(-1, -1),
+    cv::Point(0, -1),
+    cv::Point(1, -1),
+    cv::Point(1, 0),
+    cv::Point(1, 1)
+  };
+  std::size_t dir = 7;
+  cv::Point firstPx = firstBlackPixel(src);
+  cv::Point currentPx = cv::Point(firstPx.x, firstPx.y);
+  cv::Point secondPx = cv::Point(-1, -1);
+  cv::Point nextPx = cv::Point(firstPx.x, firstPx.y);
+  std::vector<std::size_t> AC, DC;
+  int n = 0;
+
+  do {
+    currentPx = nextPx;
+    ++n;
+    const bool isOdd = (dir & 1);
+    const std::size_t nextEven = (dir + 7) % 8;
+    const std::size_t nextOdd = (dir + 6) % 8;
+    dir = isOdd * nextOdd + !isOdd * nextEven;
+
+    nextPx = currentPx + directions[dir];
+    while (src.at<uchar>(nextPx.y, nextPx.x) > 127) {
+      dir = (dir + 1) % 8;
+      nextPx = currentPx + directions[dir];
+    }
+    AC.push_back(dir);
+
+    dst.at<cv::Vec3b>(nextPx) = cv::Vec3b(0, 0, 255);
+
+    if (n < 2) {
+      firstPx = currentPx;
+      secondPx = nextPx;
+    }
+  } while (!(n >= 2 && currentPx == firstPx && nextPx == secondPx));
+
+  for (int i=0; i<AC.size(); ++i)
+    DC.push_back((AC[i+1] - AC[i] + 8) % 8);
+
+  imshow("edge traced", dst);
+}
+
+void reconstruct(const cv::Point &start, const std::vector<std::size_t> &AC) {
+  cv::Mat mat(400, 600, CV_8UC1);
+  for(int i = 0; i < mat.rows; ++i)
+    for(int j = 0; j < mat.cols; ++j)
+      mat.at<uchar>(i,j) = 255;
+
+  const cv::Point directions[8] = {
+    cv::Point(0, 1),
+    cv::Point(-1, 1),
+    cv::Point(-1, 0),
+    cv::Point(-1, -1),
+    cv::Point(0, -1),
+    cv::Point(1, -1),
+    cv::Point(1, 0),
+    cv::Point(1, 1)
+  };
+
+  mat.at<uchar>(start) = 0;
+  cv::Point currentPx = cv::Point(start.y, start.x);
+  std::size_t n = AC.size();
+  for (int i=0; i<n; ++i) {
+    cv::Point nextPx = currentPx + directions[AC[i]];
+    mat.at<uchar>(nextPx.x, nextPx.y) = 0;
+    currentPx = nextPx;
+  }
+
+  imshow("reconstruction", mat);
+}
+
 int main() {
   Logger::init();
 
@@ -415,6 +510,18 @@ int main() {
   cv::Mat flowers = FileUtils::readImage(IMAGE("flowers_24bits.bmp"), cv::IMREAD_COLOR);
   cv::Mat hueSpectrum = FileUtils::readImage(IMAGE("huespectrum.png"), cv::IMREAD_COLOR);
   cv::Mat objects = FileUtils::readImage(IMAGE("multiple/trasaturi_geometrice.bmp"), cv::IMREAD_COLOR);
+  cv::Mat traceableBorder = FileUtils::readImage(IMAGE("border-tracing/object_holes.bmp"), cv::IMREAD_GRAYSCALE);
+
+  std::ifstream input(IMAGE("border-tracing/reconstruct.txt"));
+  int borderXStart, borderYStart, borderACLength;
+  std::vector<std::size_t> borderAC;
+  input >> borderXStart >> borderYStart >> borderACLength;
+  for (int i=0; i<borderACLength; ++i) {
+    std::size_t d;
+    input >> d;
+    borderAC.push_back(d);
+  }
+  input.close();
 
   INFO("Press the arrow keys to cycle through execution slides");
 
@@ -422,19 +529,8 @@ int main() {
   uchar thresh = 127;
   Slider slider(
     { [&](){ bi_level_color_map(img, outImg, thresh); }
-    , [&](){ negative(img, outImg); }
-    , [&](){ additive(img, outImg); }
-    , [&](){ multiplicative(img, outImg); }
-    , [&](){ four_squares(genRGB); }
-    , [&](){ split_channels(flowers); }
-    , [&](){ color_to_grayscale(flowers); }
-    , [&](){ split_hsv(flowers); }
-    , [&](){ compute_historgram(flowers); }
-    , [&](){
-        cv::Mat &img = objects;
-        geometricalFeatures(img);
-        cv::setMouseCallback("GeomFeature", on_mouse_click, &img);
-      }
+    , [&](){ traceBorder(traceableBorder); }
+    , [&](){ reconstruct(cv::Point(borderYStart, borderXStart), borderAC); }
     }
   );
 

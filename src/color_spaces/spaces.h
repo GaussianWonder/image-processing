@@ -15,6 +15,8 @@ public:
   uchar R();
   uchar G();
   uchar B();
+
+  bool operator==(const RGB cmp);
 };
 
 class HSV {

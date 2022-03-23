@@ -77,6 +77,11 @@ RGB hsv_to_rgb(float H, float S, float V) {
   return RGB(R, G, B);
 }
 
+bool RGB::operator==(const RGB cmp)
+{
+  return r == cmp.r && g == cmp.g && b == cmp.b;
+}
+
 RGB::RGB(float r, float g, float b)
   :r(r), g(g), b(b)
 {}

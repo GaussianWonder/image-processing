@@ -287,6 +287,122 @@ void compute_historgram(const cv::Mat &src)
   imshow("Dithered", ditheredColor);
 }
 
+void on_mouse_click(int event, int x, int y, int flags, void* ptr)
+{
+  cv::Mat *src = (cv::Mat *) ptr;
+  if (event == cv::EVENT_LBUTTONUP) {
+    RGB clickedColor(
+      src->at<cv::Vec3b>(y, x)[2],
+      src->at<cv::Vec3b>(y, x)[1],
+      src->at<cv::Vec3b>(y, x)[0]
+    );
+    DEBUG(
+      "Clicked at ({}, {}) RGB: {} {} {}",
+      x,
+      y,
+      clickedColor.r,
+      clickedColor.g,
+      clickedColor.b
+    );
+
+    int pixelCount = 0; // area
+    cv::Point pixelMass(0, 0); // sum of coords on each axis
+
+    for(int i = 0; i < src->rows; ++i) {
+      for(int j = 0; j < src->cols; ++j) {
+        RGB currentColor(
+          src->at<cv::Vec3b>(i, j)[2],
+          src->at<cv::Vec3b>(i, j)[1],
+          src->at<cv::Vec3b>(i, j)[0]
+        );
+
+        if (clickedColor == currentColor) {
+          pixelMass += cv::Point(j, i);
+          ++pixelCount;
+        }
+      }
+    }
+
+    cv::Point centerOfMass(
+      pixelMass.x / pixelCount,
+      pixelMass.y / pixelCount
+    );
+
+    DEBUG(
+      "Pixel count (Area): {}",
+      pixelCount
+    );
+
+    DEBUG(
+      "Center of mass: {} {}",
+      centerOfMass.x,
+      centerOfMass.y
+    );
+
+    int numerator = 0;
+    int denominator = 0;
+    int minRow = -1, minCol = -1, maxRow = -1, maxCol = -1;
+    auto unset = [](int a){ return a == -1; };
+    cv::Mat elongation(src->rows, src->cols, CV_8UC3);
+    for (int i = 0; i < src->rows; ++i) {
+      for (int j = 0; j < src->cols; ++j) {
+        RGB currentColor(
+          src->at<cv::Vec3b>(i, j)[2],
+          src->at<cv::Vec3b>(i, j)[1],
+          src->at<cv::Vec3b>(i, j)[0]
+        );
+        elongation.at<cv::Vec3b>(i, j) = cv::Vec3b(currentColor.B(), currentColor.G(), currentColor.R());
+
+        if (clickedColor == currentColor) {
+          cv::Point currentPoint(j, i);
+          cv::Point diff = currentPoint - centerOfMass;
+          numerator += diff.x * diff.y;
+          denominator += diff.x * diff.x - diff.y * diff.y;
+
+          if (unset(minRow) || i < minRow)
+            minRow = i;
+          
+          if (unset(minCol) || j < minCol)
+            minCol = j;
+          
+          if (unset(maxRow) || i > maxRow)
+            maxRow = i;
+
+          if (unset(maxCol) || j > maxCol)
+            maxCol = j;
+        }
+      }
+    }
+
+    float aspectRatio = (maxCol - minCol + 1.0f) / (maxRow - minRow + 1.0f);
+    DEBUG(
+      "Aspect ratio: {}",
+      aspectRatio
+    );
+
+    // float thinness = 4.0f * CV_PI * (pixelCount / permieter);
+
+    float phi = std::atan2(numerator * 2.0f, (float) denominator);
+    phi /= 2.0f;
+
+    phi = (phi * 180.0f) / CV_PI;
+
+    if (phi < 0)
+      phi += 180;
+
+    DEBUG("Elongation angle: {}", phi);
+
+    float weightX = std::sin(2 * CV_PI * (phi / 360.0f));
+    float weightY = std::sin(2 * CV_PI * (phi / 360.0f));
+
+  }
+}
+
+void geometricalFeatures(const cv::Mat &src)
+{
+  imshow("GeomFeature", src);
+}
+
 int main() {
   Logger::init();
 
@@ -298,6 +414,7 @@ int main() {
 
   cv::Mat flowers = FileUtils::readImage(IMAGE("flowers_24bits.bmp"), cv::IMREAD_COLOR);
   cv::Mat hueSpectrum = FileUtils::readImage(IMAGE("huespectrum.png"), cv::IMREAD_COLOR);
+  cv::Mat objects = FileUtils::readImage(IMAGE("multiple/trasaturi_geometrice.bmp"), cv::IMREAD_COLOR);
 
   INFO("Press the arrow keys to cycle through execution slides");
 
@@ -313,6 +430,11 @@ int main() {
     , [&](){ color_to_grayscale(flowers); }
     , [&](){ split_hsv(flowers); }
     , [&](){ compute_historgram(flowers); }
+    , [&](){
+        cv::Mat &img = objects;
+        geometricalFeatures(img);
+        cv::setMouseCallback("GeomFeature", on_mouse_click, &img);
+      }
     }
   );
 

@@ -67,3 +67,23 @@ void FileUtils::quickSave(const cv::Mat &img)
   std::string fileName = nextImageName();
   FileUtils::saveImage(img, fileName);
 }
+
+static std::vector<std::string> FileUtils::nestedFilesOf(const std::string &path)
+{
+  std::vector<std::string> paths;
+  for (const auto & file : std::filesystem::recursive_directory_iterator(path)) {
+    if (!file.is_directory())
+      paths.push_back(file.path().string());
+  }
+  return paths;
+}
+
+static std::vector<std::string> FileUtils::filesOf(const std::string &path)
+{
+  std::vector<std::string> paths;
+  for (const auto & file : std::filesystem::directory_iterator(path)) {
+    if (!file.is_directory())
+      paths.push_back(file.path().string());
+  }
+  return paths;
+}

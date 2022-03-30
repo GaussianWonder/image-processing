@@ -10,6 +10,8 @@ public:
   static cv::Mat readImage(const std::string &fileName, const cv::ImreadModes mode);
   static void saveImage(const cv::Mat &img, const std::string &fileName);
   static void quickSave(const cv::Mat &img);
+  static std::vector<std::string> nestedFilesOf(const std::string &path);
+  static std::vector<std::string> filesOf(const std::string &path);
 };
 
 #endif // __FILE_UTILS_H__

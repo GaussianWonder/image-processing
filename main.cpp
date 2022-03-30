@@ -3,6 +3,9 @@
 #include "slider.h"
 #include <cmath>
 #include <fstream>
+#include <ranges>
+#include <functional>
+#include <tuple>
 
 #include "spaces.h"
 
@@ -498,6 +501,174 @@ void reconstruct(const cv::Point &start, const std::vector<std::size_t> &AC) {
   imshow("reconstruction", mat);
 }
 
+using StructuringElement = std::tuple<cv::Mat, cv::Point>;
+
+StructuringElement structuringElement(const std::size_t n = 3) {
+  cv::Mat mat(n, n, CV_8UC1);
+  for(int i = 0; i < mat.rows; ++i)
+    for(int j = 0; j < mat.cols; ++j)
+      mat.at<uchar>(i,j) = 255;
+
+  // TODO generate from n
+  cv::Point center = cv::Point(n / 2, n / 2);
+  mat.at<uchar>(center) = 0;
+  mat.at<uchar>(0, 1) = 0;
+  mat.at<uchar>(1, 2) = 0;
+  mat.at<uchar>(1, 0) = 0;
+  mat.at<uchar>(2, 1) = 0;
+
+  return std::make_tuple(mat, center);
+}
+
+cv::Mat dilation(const cv::Mat &src, const std::size_t n = 1)
+{
+  if (n == 0) return src;
+
+  cv::Mat dst = src.clone();
+  StructuringElement se = structuringElement(3);
+  cv::Mat &seMate = std::get<0>(se);
+  cv::Point &seAnchor = std::get<1>(se);
+
+  for (int i=0; i<src.rows; ++i) {
+    for (int j=0; j<src.cols; ++j) {
+      if (src.at<uchar>(i, j) == 0) {
+        for (int k=0; k<seMate.rows; ++k) {
+          for (int l=0; l<seMate.cols; ++l) {
+            if (seMate.at<uchar>(k, l) == 0) {
+              int x = j + l - seAnchor.x;
+              int y = i + k - seAnchor.y;
+              if (x >= 0 && x < src.cols && y >= 0 && y < src.rows) {
+                dst.at<uchar>(y, x) = 0;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return dilation(dst, n-1);
+}
+
+cv::Mat erosion(const cv::Mat &src, const std::size_t n = 1)
+{
+  if (n == 0) return src;
+
+  cv::Mat dst = src.clone();
+  StructuringElement se = structuringElement(3);
+  cv::Mat &seMate = std::get<0>(se);
+  cv::Point &seAnchor = std::get<1>(se);
+
+  for (int i=0; i<src.rows; ++i) {
+    for (int j=0; j<src.cols; ++j) {
+      if (src.at<uchar>(i, j) == 0) {
+        bool applicable = true;
+        for (int k=0; k<seMate.rows; ++k) {
+          for (int l=0; l<seMate.cols; ++l) {
+            if (seMate.at<uchar>(k, l) == 0) {
+              int x = j + l - seAnchor.x;
+              int y = i + k - seAnchor.y;
+              if (x >= 0 && x < src.cols && y >= 0 && y < src.rows) {
+                if (src.at<uchar>(y, x) == 255) {
+                  applicable = false;
+                }
+              }
+            }
+          }
+        }
+        if (applicable) {
+          dst.at<uchar>(i, j) = 0;
+        } else {
+          dst.at<uchar>(i, j) = 255;
+        }
+      }
+    }
+  }
+
+  return erosion(dst, n-1);
+}
+
+cv::Mat opening(const cv::Mat &src, const std::size_t n = 1)
+{
+  if (n == 0) return src;
+  // return dilation(erosion(src, n), n);
+  return opening(dilation(erosion(src)), n-1);
+}
+
+cv::Mat closing(const cv::Mat &src, const std::size_t n = 1)
+{
+  // return erosion(dilation(src, n), n);
+  if (n == 0) return src;
+  // return dilation(erosion(src, n), n);
+  return closing(erosion(dilation(src)), n-1);
+}
+
+cv::Mat boundaryExtraction(const cv::Mat &src, const std::size_t n = 1)
+{
+  cv::Mat op = erosion(src, n);
+  cv::Mat dst(src.rows, src.cols, CV_8UC1);
+
+  for (int i=0; i<src.rows; ++i) {
+    for (int j=0; j<src.cols; ++j) {
+      // difference
+      if (src.at<uchar>(i, j) != op.at<uchar>(i, j)) {
+        dst.at<uchar>(i, j) = 255;
+      } else {
+        dst.at<uchar>(i, j) = 0;
+      }
+    }
+  }
+
+  return dst;
+}
+
+bool areIdentical(const cv::Mat &a, const cv::Mat &b)
+{
+  if (a.rows != b.rows || a.cols != b.cols) {
+    return false;
+  }
+
+  for (int i=0; i<a.rows; ++i) {
+    for (int j=0; j<a.cols; ++j) {
+      if (a.at<uchar>(i, j) != b.at<uchar>(i, j)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+void regionFilling(const cv::Mat &src)
+{
+  cv::Mat dst = src.clone();
+  cv::Mat predDst = src.clone();
+  cv::Point center(src.rows / 2, src.cols / 2);
+
+  dst.at<uchar>(center) = 0;
+
+  while(!areIdentical(predDst, dst)) {
+    cv::Mat dillated = dilation(dst);
+    
+  }
+}
+
+void morphologicPreview(const cv::Mat &src, const std::size_t n)
+{
+  cv::Mat dil = dilation(src, n);
+  cv::Mat ero = erosion(src, n);
+  cv::Mat opn = opening(src, n);
+  cv::Mat cls = closing(src, n);
+  cv::Mat border = boundaryExtraction(src, n);
+
+  imshow("Input", src);
+  imshow("Dilation", dil);
+  imshow("Erosion", ero);
+  imshow("Opening", opn);
+  imshow("Closing", cls);
+  imshow("Boundary", border);
+}
+
 int main() {
   Logger::init();
 
@@ -511,6 +682,7 @@ int main() {
   cv::Mat hueSpectrum = FileUtils::readImage(IMAGE("huespectrum.png"), cv::IMREAD_COLOR);
   cv::Mat objects = FileUtils::readImage(IMAGE("multiple/trasaturi_geometrice.bmp"), cv::IMREAD_COLOR);
   cv::Mat traceableBorder = FileUtils::readImage(IMAGE("border-tracing/object_holes.bmp"), cv::IMREAD_GRAYSCALE);
+  cv::Mat testMorph = FileUtils::readImage(IMAGE("morphological_operations/3_Open/cel4thr3_bw.bmp"), cv::IMREAD_GRAYSCALE);
 
   std::ifstream input(IMAGE("border-tracing/reconstruct.txt"));
   int borderXStart, borderYStart, borderACLength;
@@ -525,12 +697,34 @@ int main() {
 
   INFO("Press the arrow keys to cycle through execution slides");
 
+  cv::Mat roundRobinColor;
+  cv::Mat roundRobinGray;
+  std::vector<std::string> roundRobinNames = FileUtils::nestedFilesOf(IMAGE("morphological_operations/"));
+  std::vector<std::function<void()>> roundRobinExecutors;
+  std::transform(
+    roundRobinNames.begin(),
+    roundRobinNames.end(),
+    std::back_inserter(roundRobinExecutors),
+    [&](std::string path) -> std::function<void()> {
+      return [path, &roundRobinColor, &roundRobinGray]() {
+        DEBUG("Opening file {} in both color and gray scale", path);
+        roundRobinGray = FileUtils::readImage(path, cv::IMREAD_GRAYSCALE);
+        roundRobinColor = FileUtils::readImage(path, cv::IMREAD_COLOR);
+      };
+    }
+  );
+  Slider roundRobinSlider(roundRobinExecutors);
+  roundRobinSlider.exec();
+
   // Processing functions that the user can slide through
   uchar thresh = 127;
+  std::size_t counter = 1;
   Slider slider(
     { [&](){ bi_level_color_map(img, outImg, thresh); }
     , [&](){ traceBorder(traceableBorder); }
     , [&](){ reconstruct(cv::Point(borderYStart, borderXStart), borderAC); }
+    , [&](){ morphologicPreview(roundRobinGray, counter); }
+    // , [&](){ morphologicPreview(testMorph, counter); }
     }
   );
 
@@ -556,20 +750,26 @@ int main() {
       FileUtils::quickSave(outImg);
       break;
     case KEY::SPACE:
-      cv::destroyAllWindows();
+      roundRobinSlider.next();
+      roundRobinSlider.exec();
       break;
     case KEY::UP_ARROW:
       thresh += 10;
+      ++counter;
+      DEBUG("Counter {}", counter)
       break;
     case KEY::DOWN_ARROW:
       thresh -= 10;
+      if (counter > 0)
+        --counter;
+      DEBUG("Counter {}", counter)
       break;
     default:
       break;
     }
 
     // Handle keypresses
-    operation = WaitKey(30);
+    operation = WaitKey(200);
   } while (operation != KEY::ESC);
 
   Logger::destroy();

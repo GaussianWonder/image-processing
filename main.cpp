@@ -6,6 +6,7 @@
 #include <ranges>
 #include <functional>
 #include <tuple>
+#include <chrono>
 
 #include "spaces.h"
 
@@ -669,6 +670,185 @@ void morphologicPreview(const cv::Mat &src, const std::size_t n)
   imshow("Boundary", border);
 }
 
+void medianFilter(const cv::Mat &src, const std::size_t wSize = 1)
+{
+  cv::Mat dst(src.size(), CV_8UC1, cv::Scalar::all(0));
+  src.copyTo(dst);
+
+  for (int i=wSize; i<src.rows - wSize; ++i) {
+    for (int j=wSize; j<src.cols - wSize; ++j) {
+      std::vector<uchar> pixels;
+
+      for (int k=0; k<2 * wSize + 1; ++k) {
+        for (int l=0; l<2 * wSize + 1; ++l) {
+          int x = i - wSize + k;
+          int y = j - wSize + l;
+
+          pixels.push_back(src.at<uchar>(x, y));
+        }
+      }
+
+      std::sort(pixels.begin(), pixels.end());
+
+      uchar median = pixels[pixels.size() / 2];
+
+      dst.at<uchar>(i, j) = median;
+    }
+  }
+
+  imshow("Original", src);
+  imshow("Median filter", dst);
+}
+
+void gaussianFilter_test(const cv::Mat &src, const double sigma = 0.6)
+{
+  const int sixSigma = (6.0 * sigma);
+  const std::size_t kSize = (sixSigma + !(sixSigma&1));
+
+  WARN("KSIZE {}", kSize);
+  cv::Mat dst(src.size(), CV_8UC1, cv::Scalar::all(0));
+  cv::Mat kernel = cv::getGaussianKernel(kSize, sigma);
+  cv::filter2D(src, dst, -1, kernel);
+
+  imshow("Original", src);
+  imshow("Gaussian filter", dst);
+}
+
+double GaussianKernelAt(const cv::Point &point, const cv::Point &center, const double sigma)
+{
+  const double sigmaSqr = sigma * sigma;
+  const double ct = 1.0 / (2.0 * CV_PI * sigmaSqr);
+  const int xDiff = point.x - center.x;
+  const int yDiff = point.y - center.y;
+  const int diff = xDiff * xDiff + yDiff * yDiff;
+  return std::exp(-(diff / (2.0 * sigmaSqr)));
+}
+
+cv::Mat GaussianKernel(const double sigma = 0.6)
+{
+  const int sixSigma = (6.0 * sigma);
+  const std::size_t wSize = (sixSigma + !(sixSigma&1));
+  const std::size_t kSize = wSize;
+  cv::Size kernelSize(kSize, kSize);
+  cv::Mat kernel = cv::Mat::zeros(kernelSize, CV_32FC1);
+
+  WARN("Sigma {}, KernelSize {}", sigma, kSize);
+
+  cv::Point center(kSize / 2, kSize / 2);
+  for (int i=0; i<kSize; ++i) {
+    for (int j=0; j<kSize; ++j) {
+      const cv::Point point(i, j);
+      kernel.at<float>(point) = GaussianKernelAt(
+        point,
+        center,
+        sigma
+      );
+    }
+  }
+
+  return kernel;
+}
+
+float convolveKernelSum(const cv::Mat &kernel)
+{
+  float sum = 0.0f;
+  for (int i=0; i<kernel.rows; ++i) {
+    for (int j=0; j<kernel.cols; ++j) {
+      sum += kernel.at<float>(i, j);
+    }
+  }
+  return sum;
+}
+
+cv::Mat convolve(const cv::Mat &src, const cv::Mat &kernel)
+{
+  float kernelSum = convolveKernelSum(kernel);
+  const std::size_t wSize = kernel.rows / 2;
+  const std::size_t hSize = kernel.cols / 2;
+  cv::Mat dst(src.size(), CV_8UC1, cv::Scalar::all(0));
+
+  for (int i=wSize; i<src.rows - wSize; ++i) {
+    for (int j=hSize; j<src.cols - hSize; ++j) {
+      float convolution = 0.0f;
+      for (int k=0; k<kernel.rows; ++k) {
+        for (int l=0; l<kernel.cols; ++l) {
+          int x = i - wSize + k;
+          int y = j - hSize + l;
+          convolution += src.at<uchar>(x, y) * kernel.at<float>(k, l);
+        }
+      }
+      convolution /= kernelSum;
+      dst.at<uchar>(i, j) = MAX(MIN((uchar)convolution, 255), 0);
+    }
+  }
+
+  return dst;
+}
+
+void gaussianFilter2D(const cv::Mat &src, const double sigma = 0.6)
+{
+  cv::Mat dst = convolve(src, GaussianKernel(sigma));
+
+  imshow("Original", src);
+  imshow("Gaussian Filter", dst);
+}
+
+std::tuple<cv::Mat, cv::Mat> kernel2Dto1D(const cv::Mat &kernel)
+{
+  const std::size_t wSize = kernel.rows / 2;
+  const std::size_t hSize = kernel.cols / 2;
+
+  cv::Mat row = cv::Mat::zeros(cv::Size(1, kernel.cols), CV_32FC1);
+  cv::Mat col = cv::Mat::zeros(cv::Size(kernel.rows, 1), CV_32FC1);
+
+  for (int i=0; i<kernel.rows; ++i) {
+    row.at<float>(i, 0) = kernel.at<float>(i, wSize);
+  }
+
+  for (int j=0; j<kernel.cols; ++j) {
+    col.at<float>(0, j) = kernel.at<float>(hSize, j);
+  }
+
+  return std::make_tuple(row, col);
+}
+
+void gaussianFilter1D(const cv::Mat &src, const double sigma = 0.6)
+{
+  std::tuple<cv::Mat, cv::Mat> uniDimensionalKernel = kernel2Dto1D(GaussianKernel(sigma));
+
+  const cv::Mat firstPass = convolve(src, std::get<0>(uniDimensionalKernel));
+  const cv::Mat secondPass = convolve(firstPass, std::get<1>(uniDimensionalKernel));
+
+  imshow("Original", src);
+  imshow("First pass", firstPass);
+  imshow("Gaussian Filter", secondPass);
+}
+
+long long benchmark(std::function<void()> toBenchmark)
+{
+  using namespace std;
+  using namespace std::chrono;
+
+  time_point<high_resolution_clock> start_point, end_point;
+
+  start_point = high_resolution_clock::now();
+  toBenchmark();
+  end_point = high_resolution_clock::now();
+
+  auto start = time_point_cast<microseconds>(start_point).time_since_epoch().count(); 
+  auto end = time_point_cast<microseconds>(end_point).time_since_epoch().count();
+  return end-start;
+}
+
+void compareGaussians(const cv::Mat &src, const double sigma = 0.6)
+{
+  long long gaussianFilter2DTime = benchmark([&](){ gaussianFilter2D(src, sigma); });
+  long long gaussianFilter1DTime = benchmark([&](){ gaussianFilter1D(src, sigma); });
+
+  DEBUG("2D time: {}microsec \n 1D time: {}microsec", gaussianFilter2DTime, gaussianFilter1DTime);
+  DEBUG("1D is {} microsec faster, or {}x faster", gaussianFilter1DTime - gaussianFilter2DTime, gaussianFilter2DTime / gaussianFilter1DTime);
+}
+
 int main() {
   Logger::init();
 
@@ -683,6 +863,7 @@ int main() {
   cv::Mat objects = FileUtils::readImage(IMAGE("multiple/trasaturi_geometrice.bmp"), cv::IMREAD_COLOR);
   cv::Mat traceableBorder = FileUtils::readImage(IMAGE("border-tracing/object_holes.bmp"), cv::IMREAD_GRAYSCALE);
   cv::Mat testMorph = FileUtils::readImage(IMAGE("morphological_operations/3_Open/cel4thr3_bw.bmp"), cv::IMREAD_GRAYSCALE);
+  cv::Mat filterImage = FileUtils::readImage(IMAGE("noise_images/portrait_Gauss2.bmp"), cv::IMREAD_GRAYSCALE);
 
   std::ifstream input(IMAGE("border-tracing/reconstruct.txt"));
   int borderXStart, borderYStart, borderACLength;
@@ -721,9 +902,13 @@ int main() {
   std::size_t counter = 1;
   Slider slider(
     { [&](){ bi_level_color_map(img, outImg, thresh); }
-    , [&](){ traceBorder(traceableBorder); }
-    , [&](){ reconstruct(cv::Point(borderYStart, borderXStart), borderAC); }
-    , [&](){ morphologicPreview(roundRobinGray, counter); }
+    , [&](){ medianFilter(filterImage, counter); }
+    , [&](){ gaussianFilter2D(filterImage, counter / 10.0); }
+    , [&](){ gaussianFilter1D(filterImage, counter / 10.0); }
+    , [&](){ compareGaussians(filterImage, counter / 10.0); }
+    // , [&](){ traceBorder(traceableBorder); }
+    // , [&](){ reconstruct(cv::Point(borderYStart, borderXStart), borderAC); }
+    // , [&](){ morphologicPreview(roundRobinGray, counter); }
     // , [&](){ morphologicPreview(testMorph, counter); }
     }
   );

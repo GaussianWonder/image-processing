@@ -849,6 +849,103 @@ void compareGaussians(const cv::Mat &src, const double sigma = 0.6)
   DEBUG("1D is {} microsec faster, or {}x faster", gaussianFilter1DTime - gaussianFilter2DTime, gaussianFilter2DTime / gaussianFilter1DTime);
 }
 
+using GradientCalculation = std::tuple<cv::Mat, cv::Mat>;
+
+GradientCalculation gradientMagnitudeOrientation(const cv::Mat &src)
+{
+  cv::Mat dx = cv::Mat::zeros(src.size(), CV_32FC1);
+  cv::Mat dy = cv::Mat::zeros(src.size(), CV_32FC1);
+
+  cv::Sobel(src, dx, CV_32FC1, 1, 0, 3);
+  cv::Sobel(src, dy, CV_32FC1, 0, 1, 3);
+
+  cv::Mat magnitude = cv::Mat::zeros(src.size(), CV_32FC1);
+  cv::Mat orientation = cv::Mat::zeros(src.size(), CV_32FC1);
+
+  for (int i=0; i<src.rows; ++i) {
+    for (int j=0; j<src.cols; ++j) {
+      magnitude.at<float>(i, j) = sqrt(dx.at<float>(i, j) * dx.at<float>(i, j) + dy.at<float>(i, j) * dy.at<float>(i, j));
+      orientation.at<float>(i, j) = atan2(dy.at<float>(i, j), dx.at<float>(i, j));
+
+      if (orientation.at<float>(i, j) < 0) {
+        orientation.at<float>(i, j) += 2 * M_PI;
+      }
+
+      orientation.at<float>(i, j) *= 180 / M_PI;
+
+      if (orientation.at<float>(i, j) > 180) {
+        orientation.at<float>(i, j) -= 180;
+      }
+
+      magnitude.at<float>(i, j) = MAX(MIN(magnitude.at<float>(i, j), 255), 0);
+      orientation.at<float>(i, j) = MAX(MIN(orientation.at<float>(i, j), 255), 0);
+    }
+  }
+
+  return std::make_tuple(magnitude, orientation);
+}
+
+cv::Mat nonMaximumSuppression(const GradientCalculation &in)
+{
+  const cv::Mat &magnitude = std::get<0>(in);
+  const cv::Mat &orientation = std::get<1>(in);
+
+  // Perform non-maximum suppression using interpolation
+
+  cv::Mat dst = cv::Mat::zeros(magnitude.size(), CV_32FC1);
+
+  for (int i=0; i<magnitude.rows; ++i) {
+    for (int j=0; j<magnitude.cols; ++j) {
+      const float &m = magnitude.at<float>(i, j);
+      const float &o = orientation.at<float>(i, j);
+
+      if (m == 0) {
+        dst.at<float>(i, j) = 0;
+        continue;
+      }
+
+      const int x = j + (int)(m * cos(o * M_PI / 180));
+      const int y = i + (int)(m * sin(o * M_PI / 180));
+
+      if (x < 0 || x >= magnitude.cols || y < 0 || y >= magnitude.rows) {
+        dst.at<float>(i, j) = 0;
+        continue;
+      }
+
+      if (magnitude.at<float>(y, x) < m) {
+        dst.at<float>(i, j) = 0;
+        continue;
+      }
+
+      dst.at<float>(i, j) = m;
+
+      if (o > 45 && o < 135) {
+        dst.at<float>(i, j) = 0;
+      } else if (o > 135 && o < 225) {
+        dst.at<float>(i, j) = 0;
+      } else if (o > 225 && o < 315) {
+        dst.at<float>(i, j) = 0;
+      } else if (o > 315 || o < 45) {
+        dst.at<float>(i, j) = 0;
+      } else {
+        dst.at<float>(i, j) = m;
+      }
+
+      dst.at<float>(i, j) = MAX(MIN(dst.at<float>(i, j), 255), 0);
+    }
+  }
+
+  return dst;
+}
+
+void canny(const cv::Mat &src) {
+  const cv::Mat blurred = gaussianFilter1D(src, 0.5);
+  const GradientCalculation grad = gradientMagnitudeOrientation(blurred);
+
+  imshow("Original", src);
+  imshow("Edge detection", dst);
+}
+
 int main() {
   Logger::init();
 
@@ -864,6 +961,7 @@ int main() {
   cv::Mat traceableBorder = FileUtils::readImage(IMAGE("border-tracing/object_holes.bmp"), cv::IMREAD_GRAYSCALE);
   cv::Mat testMorph = FileUtils::readImage(IMAGE("morphological_operations/3_Open/cel4thr3_bw.bmp"), cv::IMREAD_GRAYSCALE);
   cv::Mat filterImage = FileUtils::readImage(IMAGE("noise_images/portrait_Gauss2.bmp"), cv::IMREAD_GRAYSCALE);
+  cv::Mat edgeDetectionTest = FileUtils::readImage(IMAGE("saturn.bmp"), cv::IMREAD_GRAYSCALE);
 
   std::ifstream input(IMAGE("border-tracing/reconstruct.txt"));
   int borderXStart, borderYStart, borderACLength;
@@ -902,14 +1000,10 @@ int main() {
   std::size_t counter = 1;
   Slider slider(
     { [&](){ bi_level_color_map(img, outImg, thresh); }
-    , [&](){ medianFilter(filterImage, counter); }
-    , [&](){ gaussianFilter2D(filterImage, counter / 10.0); }
-    , [&](){ gaussianFilter1D(filterImage, counter / 10.0); }
-    , [&](){ compareGaussians(filterImage, counter / 10.0); }
-    // , [&](){ traceBorder(traceableBorder); }
-    // , [&](){ reconstruct(cv::Point(borderYStart, borderXStart), borderAC); }
-    // , [&](){ morphologicPreview(roundRobinGray, counter); }
-    // , [&](){ morphologicPreview(testMorph, counter); }
+    // , [&](){ medianFilter(filterImage, counter); }
+    // , [&](){ gaussianFilter2D(filterImage, counter / 10.0); }
+    // , [&](){ gaussianFilter1D(filterImage, counter / 10.0); }
+    , [&](){ canny(edgeDetectionTest); }
     }
   );
 
